@@ -10,6 +10,7 @@
 ![Pipeline for the development of a CPGT-based predictive model in a set of cancer-related problems ](GT.png)
 
 <br>
+
 ## Data Preparation
 For all pan-cancer The Cancer Genome Atlas Program(TCGA) data, we downloaded it from the [link](https://portal.gdc.cancer.gov/). As for our external validation set of The Metastatic Breast Cancer(CMI-MBC) and Clinical Proteomic Tumor Analysis Consortium(CPTAC), we also downloaded from the [link](https://portal.gdc.cancer.gov/).
 Especially, the external dataset Chinese Glioma Genome Atlas(CCGA) is downloaded from [link](http://www.cgga.org.cn/).
@@ -40,6 +41,11 @@ For the four main tasks in the article:
 
 We have four main codes in folder src which are corresponding to corresponding tasks. At the same time, we put all four trained models into folder **models** for everyone to test the results.
 
+## Requirements
+R version: 4.1.3
+
+## Demo
+Please run the code files in src directly as required. The R packages that need to be installed for each file are listed at the head of the file.
 
 ## Contact
 If you have any questions in this repo, please contact email: luyao.yang@kaust.edu.sa or jing.kai@kaust.edu.sa
