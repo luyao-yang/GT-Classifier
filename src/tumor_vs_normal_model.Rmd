@@ -1,0 +1,133 @@
+---
+title: "tumor_vs_normal_model"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, include=FALSE}
+  library(MASS)
+  library(gplots)
+  library(RColorBrewer)
+  library(caret)
+  library(Heatplus)
+  library(sparcl)
+  library(reshape2)
+  library(knitr)
+  library(pheatmap)
+  library(ROCR)
+```
+
+### import the processed 54 GT genes normal and tumor expression data
+
+```{r}
+data_dir <- ("star_data/pan-cancer_data")
+file_path <- file.path(data_dir,"normalcancer.csv")
+dat =  read.csv(file_path, header=T, stringsAsFactors = T)[,-1]
+
+gt_genes_path <- file.path(data_dir,"71_genes.csv")
+gt <- read.csv(gt_genes_path,header = F)$V2
+```
+
+### type includes normal and tumor type
+### Tissue includes 13 cancer tissues
+
+```{r}
+set.seed(61186)
+pp = preProcess(dat, method=c("nzv", "center", "scale", "YeoJohnson"))
+ppdat = predict(pp, dat)
+
+ppdattype = split(ppdat, ppdat$tissue)
+pal = colorRampPalette(c("red", "black", "green"))(n = 128)
+```
+
+### Using PCA to observe the distribution of the data for each of the tumor type
+
+```{r}
+for (i in 1:length(ppdattype)) {
+    DF = ppdattype[[i]]
+    matdat = as.matrix(DF[,-c(1,ncol(DF)-1,ncol(DF))]) 
+    TissueType = ifelse(DF$type=="normal", "normal", "cancer") 
+    pca = prcomp(matdat)
+    p1 = ggplot(as.data.frame(pca$x),aes(PC1, PC2, color=TissueType))+
+        geom_point(alpha=0.5)+
+        scale_color_manual(values = c("red", "blue"))+
+        theme_bw()+
+        ggtitle(names(ppdattype)[i])
+    
+    pca_path <- file.path(data_dir,"PCA_results")
+    if (!dir.exists(pca_path)) {
+        dir.create(pca_path, showWarnings = FALSE)
+      }
+    filename = file.path(pca_path, paste0(names(ppdattype)[i], ".png"))
+    ggsave(filename=filename, plot=p1, width=5, height=4)
+}
+
+```
+
+# trainig the normal & cancer model
+
+```{r}
+intrain <- createDataPartition(ppdat$type, p=0.7, list=F)
+pptraining <- ppdat[intrain,]
+pptraining <- pptraining[,!colnames(pptraining) %in% c("Patient_id","tissue")]
+pptesting <- ppdat[-intrain,]
+pptesting <- pptesting[,!colnames(pptesting) %in% c("Patient_id","tissue")]
+
+
+cv <- trainControl(
+            method = "cv",
+            number = 10,
+            allowParallel = TRUE,
+            classProbs = TRUE,
+            savePredictions = TRUE,
+            summaryFunction = twoClassSummary,
+            seeds = set.seed(123))
+
+tune_grid <- expand.grid(
+             nrounds = c(1,5)*200, 
+             max_depth = c(10, 15, 20),
+             colsample_bytree = 0.8,
+             eta = c(0.1,0.3),
+             gamma=0.1,
+             min_child_weight = 0.8,
+             subsample = 0.8
+                      )
+
+### uncomment is need train a new normalcancer model
+model.fit <- train(type~., 
+            data = pptraining, 
+            method = "xgbTree",
+            tuneGrid = tune_grid,
+            trControl = cv,
+            verbose = FALSE,
+            metric = "ROC",
+            verbosity = 0)
+
+
+saveRDS(model.fit,"./models/normalcancer.rds")
+model.fit <- readRDS("./models/normalcancer.rds")
+
+```
+
+```{r}
+preds = predict(model.fit, pptesting[,!colnames(pptesting) %in% c("type")])
+confmat = confusionMatrix(preds, pptesting$type)
+plt <- as.data.frame(confmat$table)
+plt$Prediction <- factor(plt$Prediction, levels=rev(levels(plt$Prediction)))
+
+ggplot(plt, aes(Reference, Prediction,fill= Freq)) +
+        ggtitle("TCGA Testing Dataset")+
+        geom_tile() + geom_text(aes(label=Freq)) +
+        scale_fill_gradient(low="white", high="#4393C3") +
+        labs(x = "Reference",y = "Prediction") +
+        scale_x_discrete(labels=c("Cancer","Normal")) +
+        scale_y_discrete(labels=c("Normal","Cancer"))
+```
+
+
+
+

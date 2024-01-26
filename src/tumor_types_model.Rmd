@@ -1,0 +1,100 @@
+---
+title: "tumor_types_model"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r,include=FALSE}
+suppressPackageStartupMessages({
+  library(rgl)
+  library(TCGAbiolinks)
+  library(caret)
+  library(ggplot2)
+  library(MASS)
+  library(Heatplus)
+  library(reshape2)
+  library(RColorBrewer)
+  library(ConsensusClusterPlus)
+  library(sigclust)
+  library(pheatmap)
+  library(tsne)
+  library(gplots)
+  library(ggradar)
+  library(doMC)
+  library(dplyr)
+  library(tidyverse)
+  library(plyr)
+  library(MLmetrics)
+  library(sparcl)
+})
+
+```
+
+### preprocess the data
+
+```{r pressure, echo=FALSE}
+set.seed(1234)
+data_dir <- ("star_data/pan-cancer_data")
+cancers_path <- file.path(data_dir,"27_cancers.csv")
+gt_all <-  read.csv(cancers_path,header = T)[,-1]
+
+intrain     = createDataPartition(gt_all$.id, p=.9, list=FALSE)
+training    = gt_all[intrain,]
+testing     = gt_all[-intrain,]
+
+pp       = preProcess(x=training, method = c("nzv", "scale", "center", "YeoJohnson"),na.remove=TRUE)
+pptraining   = predict(pp, training)
+
+pp       = preProcess(testing, method = c("nzv", "scale", "center", "YeoJohnson"),na.remove =TRUE)
+pptesting = predict(pp, testing)
+
+```
+
+```{r}
+cv <- trainControl(
+  method = "cv",
+  number = 10,
+  allowParallel = TRUE,
+  classProbs = TRUE,
+  seeds = set.seed(123))
+
+tune_grid <- expand.grid(
+             nrounds = c(3,5)*200,  # this is n_estimators in the python code above
+             max_depth = c( 10, 15, 20),
+             colsample_bytree = 0.8,
+             eta = 0.2, # learning rate
+             gamma=0.1,
+             min_child_weight = 0.8,
+             subsample = 0.8
+                      )
+
+### uncomment if need retrain a model
+cvtreemodel <- train(
+               .id~.,
+               data = pptraining,
+               method = "xgbTree",
+               tuneGrid = tune_grid,
+               trControl = cv,
+               metrics = "ACC",
+               verbose = FALSE,
+               verbosity = 0
+               )
+
+# Extract variable importance
+importance <- varImp(cvtreemodel)
+
+savemodelPath <- file.path("./models/cancertypes.rds")
+saveRDS(cvtreemodel,savemodelPath)
+cvtreemodel <- readRDS(savemodelPath)
+
+
+preds <- predict(cvtreemodel, pptesting[,!colnames(pptesting) %in% c(".id")])
+
+confmat = confusionMatrix(preds, as.factor(pptesting$.id))
+result = pheatmap(table(preds, pptesting$.id), scale = "column", cluster_rows=FALSE, cluster_cols=FALSE)
+```
+

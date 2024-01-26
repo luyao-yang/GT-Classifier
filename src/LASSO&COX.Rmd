@@ -1,0 +1,359 @@
+---
+title: "LASSO&COX"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,include=FALSE}
+library(rgl)
+library(TCGAbiolinks)
+library(TCGA2STAT)
+library(ggplot2)
+library(survival)
+library(ggpubr)
+library(survminer)
+library(survivalROC)
+library(plotROC)
+library(Matrix)
+library(glmnet)
+library(polspline)
+library(rms)
+library(dplyr)
+library(VIM)
+library(reshape2)
+library(MASS)
+library(Heatplus)
+library(reshape2)
+library(RColorBrewer)
+library(ConsensusClusterPlus)
+library(sigclust)
+library(pheatmap)
+library(doMC)
+library(tsne)
+library(caret)
+library(magrittr)
+library(tidyverse)
+library(plyr)
+library(gplots)
+library(DESeq2)
+library(factoextra)
+library(timeROC)
+```
+
+### Glioma Prognosis Analysis using LASSO and COX
+
+```{r}
+data_dir <- "star_data/survival_data"
+genes_path <- file.path(data_dir,"Glioma_44_genes.txt")
+gt44 <- read_tsv(genes_path,col_names=FALSE,show_col_types=FALSE)$X1
+
+### This part splits the file Glioma_survival.csv into 7:3 training dataset and testing dataset
+Glioma_subtypes_path <- file.path(data_dir,"Glioma_survival.csv")
+Giioma_subs <- read.csv(Glioma_subtypes_path, header = TRUE)
+Glioma_subs <- na.omit(Glioma_subs)
+
+sub <- sample(1:nrow(Glioma_subs),round(nrow(Glioma_subs)*0.7))
+training <- Glioma_subs[sub,]
+testing <- Glioma_subs[-sub,]
+
+# write.csv(training,file = "Glioma_training.csv",quote=FALSE,row.names = FALSE)
+# write.csv(testing,file = "Glioma_testing.csv",quote=FALSE,row.names = FALSE)
+# training_path <- file.path(data_dir,"Glioma_training.csv")
+# testing_path <- file.path(data_dir,"Glioma_testing.csv")
+# read training and testing dataset that are saved
+# training <- read.csv(training_path,header = TRUE)
+# testing <- read.csv(testing_path,header = TRUE)
+
+# extract 44 genes
+training <- training[,colnames(training) %in% c(gt44,"patient","OS","Status","pam50")]
+testing <- testing[,colnames(testing) %in% c(gt44,"patient","OS","Status","pam50")]
+
+# Preprocess the training data
+pp = preProcess(training[,!colnames(training) %in% c("patient","Status","OS","Original.Subtype")], method=c("scale"))
+dt = predict(pp, training[,!colnames(training) %in% c("patient","Status","OS","Original.Subtype")])
+x <- data.matrix(dt)
+# change survival time into year unit
+dt$OS = training$OS/12
+dt$Status = training$Status
+
+# Process the testing data
+pp = preProcess(testing[,!colnames(testing) %in% c("patient","Status","OS","Original.Subtype")], method=c("scale"))
+pptesting = predict(pp, testing[,!colnames(testing) %in% c("patient","Status","OS","Original.Subtype")])
+# change survival time into year unit
+pptesting$OS = testing$OS/12
+pptesting$Status = testing$Status
+```
+
+### Using LASSO to get the marker gene
+
+```{r}
+# Set up dependent variable y, package survival time and survival state (survival data)
+y <- data.matrix(Surv(as.double(dt$OS),as.double(dt$Status)))
+# sum(y<0)
+fit <-glmnet(x,y,family = "cox",alpha = 1)
+# plot(fit,xvar="lambda",label=T)
+
+#cross validation
+set.seed(1234)
+fitcv <- cv.glmnet(x,y,family="cox", alpha=1,nfolds=10)
+plot(fitcv)
+coefficient <- coef(fitcv, s="lambda.1se")
+
+Active.index <- which(as.numeric(coefficient) != 0)
+activa.coefficents <- as.numeric(coefficient)[Active.index]
+siggenes <- rownames(coefficient)[Active.index]
+# "B3GNT5"    "B3GNT9"    "C1GALT1C1" "CHST2"     "FUT9"      "GALNT13" 
+print(siggenes)
+
+```
+
+### Using cox proportional hazards model to construct the equation of the marker genes
+
+```{r}
+
+formula_for_multi <- as.formula(paste0('Surv(OS,Status)~',paste(siggenes,sep='',collapse = '+')))
+dt$Status = as.double(dt$Status)
+multi_variate_cox <- coxph(formula_for_multi, data=dt)
+
+# cox.zph Test the proportional hazards assumption for a Cox regression model fit 
+ph_hypo_multi <- cox.zph(multi_variate_cox)
+ph_hypo_table <- ph_hypo_multi$table[-nrow(ph_hypo_multi$table),]
+formula_for_multi <- as.formula(paste0('Surv(OS,Status)~',paste(rownames(ph_hypo_table)[ph_hypo_table[,3]>0.05],sep='',collapse = '+')))
+multi_variate_cox2 <- coxph(formula = formula_for_multi,data=dt)
+candidate_genes <- c(rownames(ph_hypo_table)[ph_hypo_table[,3]>0.05])
+
+# Forest
+ggforest(model=multi_variate_cox2, data=dt,main = "Hazard ratios of Glioma candidates genes",fontsize=1)
+# C_index <- multi_variate_cox2$concordance['concordance'] # accuracy
+```
+
+
+```{r}
+# As for Glioma
+riskscore <- function(survival_cancer_df, candidate_genes, cox_report){
+  risk_score_table <- survival_cancer_df[,candidate_genes]
+  for(gene_name in colnames(risk_score_table)){
+    risk_score_table$gene <- risk_score_table[,gene_name]*(summary(cox_report)$coefficients[gene_name,1])
+  }
+  risk_score_table <- cbind(risk_score_table,"risk_score"=rowSums(risk_score_table)) %>%
+    cbind(survival_cancer_df[,c("OS","Status")])
+  risk_score_table <- risk_score_table[,c("OS","Status",candidate_genes,"risk_score")]
+  }
+
+# Create the final risk score tabel
+risk_score_table <- riskscore(dt,candidate_genes, multi_variate_cox2)
+```
+
+# Time-dependent ROC to get the cutoff value
+
+```{r}
+TimeROC <- function(risk_score_table,times){
+    time_roc_res <- timeROC(
+      T = risk_score_table$OS,
+      delta = risk_score_table$Status,
+      marker = risk_score_table$risk_score,
+      cause = 1,
+      weighting="marginal",
+      times = times,
+      ROC = TRUE,
+      iid = TRUE
+    )
+    
+    time_ROC_df <- data.frame(
+      TP_1 = time_roc_res$TP[, 1],
+      FP_1 = time_roc_res$FP[, 1],
+      TP_2 = time_roc_res$TP[, 2],
+      FP_2 = time_roc_res$FP[, 2],
+      TP_3 = time_roc_res$TP[, 3],
+      FP_3 = time_roc_res$FP[, 3],
+      TP_4 = time_roc_res$TP[, 4],
+      FP_4 = time_roc_res$FP[, 4]
+    )
+    
+    # TimeROC curves for 2, 5, 8 ,15 years were plotted in the model group. 
+    # The best cutoff value was marked on the 5-year TimeROC curve.
+    gg<-ggplot(data = time_ROC_df) +
+      geom_line(aes(x = FP_1, y = TP_1), size = 0.7, color = "#3120E0") +
+      geom_line(aes(x = FP_2, y = TP_2), size = 0.7, color = "#256D85") +
+      geom_line(aes(x = FP_3, y = TP_3), size = 0.7, color = "#3B9AE1") +
+      geom_line(aes(x = FP_4, y = TP_4), size = 0.7, color = "#21E1E1") +
+      geom_abline(slope = 1, intercept = 0, color = "grey", size = 1, linetype = 2) +
+      theme_bw() +
+      annotate("text", x = 0.87, y = 0.23, size = 3.5,
+               label = paste0(paste("AUC at "," years = ", sep = as.character(times[1])), 
+                              sprintf("%.3f", time_roc_res$AUC[[1]])), color = "#3120E0"
+      ) +
+      annotate("text", x = 0.87, y = 0.16, size = 3.5,
+               label = paste0(paste("AUC at "," years = ", sep = as.character(times[2])), 
+                              sprintf("%.3f", time_roc_res$AUC[[2]])), color =  "#256D85"
+      ) +
+      annotate("text", x = 0.87, y = 0.09, size = 3.5,
+               label = paste0(paste("AUC at "," years = ", sep = as.character(times[3])),  
+                              sprintf("%.3f", time_roc_res$AUC[[3]])), color ="#3B9AE1"
+      ) + 
+      annotate("text", x = 0.875, y = 0.02, size = 3.5,
+               label = paste0(paste("AUC at "," years = ", sep = as.character(times[4])), 
+                              sprintf("%.3f", time_roc_res$AUC[[4]])), color =  "#21E1E1"
+      ) +
+      labs(x = "1-Specificity", y = "Sensitivity") +
+      theme(
+        # axis.text = element_text(face = "bold", size = 11, color = "black"),
+        axis.title.x = element_text( size = 14, color = "black", margin = margin(c(15, 0, 0, 0))),
+        axis.title.y = element_text( size = 14, color = "black", margin = margin(c(0, 15, 0, 0)))
+      )
+    
+     cutoff <- risk_score_table$risk_score[which.max(time_ROC_df$TP_2-time_ROC_df$FP_2)]
+     out <- list(gg,cutoff)
+     
+     return(out)
+}
+
+
+out<-TimeROC(risk_score_table,times = c(2, 5, 8,15))
+AUC1 <- out[1]
+cutoff <- out[2]
+```
+
+### Testing the model on the TCGA training dataset and testing dataset
+
+```{r}
+# As for training data
+group <- (risk_score_table$risk_score > cutoff)
+group[group == TRUE] <- 'high'
+group[group == FALSE] <- 'low'
+result_risk_table <- cbind(risk_score_table,group)
+
+fit_km1 <- survfit(Surv(OS,Status) ~ group, data = 
+                    result_risk_table)
+
+# plot the result
+gg1 <- ggsurvplot(fit_km1,risk.table = T,conf.int = F,legend.title="total risk score",pval = T,risk.table.height=0.3,xlab="year",title=paste0("TCGA Training Data"))
+gg1$table <- gg1$table + theme(plot.title = element_text(size = 6, face = "bold"))
+```
+
+```{r}
+# As for testing data
+testing_score_table <- riskscore(pptesting,candidate_genes,multi_variate_cox2 )
+
+group <- (testing_score_table$risk_score > cutoff)
+group[group == TRUE] <- 'high'
+group[group == FALSE] <- 'low'
+
+result_risk_table <- cbind(testing_score_table,group)
+
+fit_km2 <- survfit(Surv(OS,Status) ~ group, data = 
+                    result_risk_table)
+
+# plot the result
+gg2 <- ggsurvplot(fit_km2,risk.table = T,conf.int = F,legend.title="total risk score",pval = T,risk.table.height=0.3,xlab="year",title=paste0("TCGA Testing Data"))
+gg2$table <- gg2$table + theme(plot.title = element_text(size = 6, face = "bold"))
+gg2
+```
+
+### Test the riskscore model on the CGGA dataset
+
+```{r}
+### Combine the 325 and 693 genes together
+# CGGA325 <- file.path(data_dir,"CGGA.mRNAseq_325.txt")
+# CGGA693 <- file.path(data_dir,"CGGA.mRNAseq_693.txt")
+# cgga1 <- read.table(CGGA325,row.names = 1,header = T)
+# cgga2 <- read.table(CGGA693,row.names = 1,header = T)
+# 
+# #change Fpkm to TPM
+# FPKM2TPM <- function(fpkm){
+#   exp(log(fpkm) - log(sum(fpkm)) + log(1e6))
+# }
+#
+# TPMs1 <- apply(cgga1,2,FPKM2TPM)
+# cgga1 <- as.data.frame(TPMs1) 
+# TPMs2 <- apply(cgga2,2,FPKM2TPM)
+# cgga2 <- as.data.frame(TPMs2) 
+# 
+# cgga1 <- cgga1[(rownames(cgga1) %in% candidate_genes),]
+# cgga2 <- cgga2[(rownames(cgga2) %in% candidate_genes),]
+# cgga1 <- as.data.frame(t(cgga1))
+# cgga2 <- as.data.frame(t(cgga2))
+# result <- rbind(cgga1,cgga2)
+# save_path <- file.path(data_dir,"CGGA_candidate_genes.csv")
+# write.table(result, file = save_path, sep = ",",quote=FALSE,row.names = T)
+
+CGGA <- file.path(data_dir,"CGGA_candidate_genes.csv")
+cgga_risk_table <- read.table(CGGA,row.names = 1,header = T,sep=",")
+pp = preProcess(cgga_risk_table, method=c("scale"))
+cgga_risk_table = predict(pp,cgga_risk_table)
+
+# # B3GNT5*0.1906201+B3GNT9*0.3708307 + C1GALT1C1*0.2141980+ FUT9 *(-0.7967398)
+cgga_risk_table$risk_score <- 0.1906201*cgga_risk_table$B3GNT5 + 0.3708307*cgga_risk_table$B3GNT9 + 0.2141980*cgga_risk_table$C1GALT1C1+(-0.7967398)*cgga_risk_table$FUT9
+
+# combine the 325 and 693 clinical data together
+# clinical1 <- file.path(data_dir,"CGGA.mRNAseq_325_clinical.txt")
+# clinical2 <- file.path(data_dir,"CGGA.mRNAseq_693_clinical.txt")
+# cgga_clinical1 <- read.table(clinical1,sep = "\t",row.names = 1,header = T)
+# cgga_clinical2 <- read.table(clinical2,sep = "\t",row.names = 1,header = T)
+# cgga_clinical <- rbind(cgga_clinical1,cgga_clinical2)
+# clinical_all <- file.path(data_dir, "CGGA_clinical_all.csv")
+# write.table(cgga_clinical, file =clinical_all, sep = ",",quote=FALSE,row.names = F)
+
+clinical <- file.path(data_dir,"CGGA_clinical_all.csv")
+cgga_clinical <- read.table(clinical,header = T,sep=",")
+# cgga_clinical<-na.omit(cgga_clinical,c(cgga_clinical$OS,cgga_clinical$Censor))
+
+cgga_risk_table$OS <- cgga_clinical$OS/356
+cgga_risk_table$Status <- cgga_clinical$Censor
+cgga_risk_table$type <-cgga_clinical$PRS.type
+cgga_risk_table <- na.omit(cgga_risk_table)
+
+# Plot the time dependent ROC of the CGGA
+out2 <- TimeROC(cgga_risk_table,times = c(2, 5, 7, 10))
+AUC2 <- out2[1]
+cgga_cutoff <-out2[2]
+
+group <- (cgga_risk_table$risk_score > cgga_cutoff)
+group[group == TRUE] <- 'high'
+group[group == FALSE] <- 'low'
+
+cgga_result_risk_table <- cbind(cgga_risk_table,group)
+fit_km3 <- survfit(Surv(OS,Status) ~ group, data = 
+                    cgga_result_risk_table )
+
+# plot the result
+gg3 <- ggsurvplot(fit_km3, risk.table = T,conf.int = F,legend.title="total risk score",pval = T,risk.table.height=0.3,xlab="year")
+gg3$table <- gg3$table + theme(plot.title = element_text(size = 6, face = "bold"))
+```
+### Show the result of CGGA according to the primary and recurrent glioma
+
+```{r}
+### As for the primary Glioma
+primary_risk_table <- cgga_risk_table[cgga_risk_table$type=="Primary",]
+
+group <- (primary_risk_table$risk_score > cgga_cutoff)
+group[group == TRUE] <- 'high'
+group[group == FALSE] <- 'low'
+
+primary_risk_table <- cbind(primary_risk_table,group)
+fit_km4 <- survfit(Surv(OS,Status) ~ group, data = 
+                    primary_risk_table )
+
+# plot the result
+gg4 <- ggsurvplot(fit_km4, risk.table = T,conf.int = F,legend.title="total risk score",pval = T,risk.table.height=0.3,xlab="year",title=paste0("Primary Glioma"))
+gg4$table <- gg4$table + theme(plot.title = element_text(hjust = 0.1, size = 6, face = "bold"))
+
+
+### As for the recurrent Glioma
+recurrent_risk_table <- cgga_risk_table[cgga_risk_table$type=="Recurrent",]
+group <- (recurrent_risk_table$risk_score > cgga_cutoff)
+group[group == TRUE] <- 'high'
+group[group == FALSE] <- 'low'
+
+recurrent_risk_table <- cbind(recurrent_risk_table,group)
+fit_km4 <- survfit(Surv(OS,Status) ~ group, data = 
+                    recurrent_risk_table )
+
+# plot the result
+gg4 <- ggsurvplot(fit_km4, risk.table = T,conf.int = F,legend.title="total risk score",pval = T,risk.table.height=0.3,xlab="year",title=paste0("Recurrent Glioma"))
+gg4$table <- gg4$table + theme(plot.title = element_text(hjust = 0.1, size = 6, face = "bold"))
+```
+

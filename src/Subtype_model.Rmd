@@ -1,0 +1,239 @@
+---
+title: "Subtypes_model"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r include=FALSE}
+library(rgl)
+library(TCGAbiolinks)
+library(TCGA2STAT)
+library(caret)
+library(dplyr)
+library(ggplot2)
+library(MASS)
+library(Heatplus)
+library(reshape2)
+library(RColorBrewer)
+library(ConsensusClusterPlus)
+library(sigclust)
+library(pheatmap)
+library(magrittr)
+library(doMC)
+library(tsne)
+library(tidyverse)
+library(plyr)
+library(gplots)
+library(DESeq2)
+library(factoextra)
+library(Metrics)
+library(mlbench)
+library(pROC)
+```
+
+### As for BRCA subtype models
+
+```{r pressure, echo=FALSE}
+brca_data_dir <- "star_data/BRCA_data"
+genes_path <- file.path(brca_data_dir,"BRCA_47_genes.txt")
+# read the 35 differential genes of BRCA
+gt47 <- read_tsv(genes_path,col_names=FALSE,show_col_types=FALSE)$X1
+
+### This part read the BRCA dataset and process it to train and test datasets by 7:3 with a total 750 samples
+subtypes_path <- file.path(brca_data_dir,"BRCA_IHC_pam50.csv")
+BRCA_subs <- read.csv(subtypes_path, header = TRUE, sep=",")
+# table(BRCA_subs$IHC)
+BRCA_subs <- BRCA_subs[,colnames(BRCA_subs) %in% c(gt47,"pam50","patient","IHC")]
+BRCA_subs
+
+### split the dataset to train and test by 7:3
+sub <- sample(1:nrow(BRCA_subs),round(nrow(BRCA_subs)*0.7))
+training <- BRCA_subs[sub,]
+testing <- BRCA_subs[-sub,]
+
+
+pp <- preProcess(training, method = c("nzv", "center", "scale", "YeoJohnson"))
+pp <- preProcess(testing, method = c("nzv", "center", "scale", "YeoJohnson"))
+pptraining <- predict(pp, training)
+pptesting <- predict(pp, testing)
+```
+
+##### Train a model using XGBoost
+
+```{r}
+cv <- trainControl(
+  method = "cv",
+  number = 10,
+  allowParallel = TRUE,
+  classProbs = TRUE,
+  summaryFunction = multiClassSummary,
+  seeds = set.seed(123))
+
+tune_grid <- expand.grid(
+             nrounds = c(1,5)*200,  # this is n_estimators in the python code above
+             max_depth = c(10, 15, 20),
+             colsample_bytree = seq(0.5, 1, 0.1),
+             eta = seq(0.1, 1, 0.2), # learning rate
+             gamma=0.1,
+             min_child_weight = c(0.8,1),
+             subsample = c(0.8,1)
+                      )
+
+cvtreemodel <- train(IHC~., 
+               data = pptraining[,!colnames(pptraining) %in% c("pam50","patient")], 
+               method = "xgbTree",
+               tuneGrid = tune_grid,
+               trControl = cv,
+               verbose = FALSE,
+               metric = "ROC",
+               verbosity = 0)
+
+
+# visualize the tuning parameters
+ggplot(cvtreemodel)
+# the best tuning parameters of the model
+# cvtreemodel$bestTune
+
+### save model and import model
+savemodelPath <- file.path("models","BRCA_sub.rds")
+if (!dir.exists(savemodelPath)) {
+  # Create the directory
+  dir.create(dir_path, showWarnings = FALSE)
+}
+saveRDS(cvtreemodel,savemodelPath)
+my_model <- readRDS(savemodelPath)
+
+# Predict the result using our model
+preds <- predict(cvtreemodel, pptesting[,!colnames(pptesting) %in% c("pam50","patient")])
+
+# output the confusion matrix of the GT35 subtype model
+confmat1 = confusionMatrix(preds, as.factor(pptesting$IHC))
+
+# output the confusion matrix of the pam50
+confmat2 = confusionMatrix(as.factor(pptesting$pam50), as.factor(pptesting$IHC))
+```
+
+## Draw the conmfusion matrices of the 2 models
+
+```{r}
+### plot the confusion matrix of our GT33 subtype model
+plt1 <- as.data.frame(confmat1$table)
+plt$Prediction <- factor(plt1$Prediction, levels=rev(levels(plt1$Prediction)))
+
+ggplot(plt1, aes(Prediction,Reference, fill= Freq)) +
+        geom_tile() + geom_text(aes(label=Freq)) +
+        scale_fill_gradient(low="white", high="#4393C3") +
+        labs(x = "Reference",y = "Prediction") +
+        scale_x_discrete(labels=c("LumB","LumA","Her2","Basal")) +
+        scale_y_discrete(labels=c("Basal","Her2","LumA","LumB"))
+
+
+plt2 <- as.data.frame(confmat2$table)
+plt2$Prediction <- factor(plt2$Prediction, levels=rev(levels(plt2$Prediction)))
+
+ggplot(plt2, aes(Prediction,Reference, fill= Freq)) +
+        geom_tile() + geom_text(aes(label=Freq)) +
+        scale_fill_gradient(low="white", high="#4393C3") +
+        labs(x = "Reference",y = "Prediction") +
+        scale_x_discrete(labels=c("LumB","LumA","Her2","Basal")) +
+        scale_y_discrete(labels=c("Basal","Her2","LumA","LumB"))
+
+```
+
+##### As for Glioma subtype models
+
+```{r}
+data_dir_glioma <- "star_data/Glioma_data"
+
+# read the 44 differential genes of Glioma
+genes_path <- file.path(data_dir_glioma,"Glioma_50_genes.txt")
+gt50 <- read_tsv(genes_path,col_names=FALSE,show_col_types=FALSE)$X1
+
+### This part read the Glioma dataset and process it to train and test datasets by 7:3 with a total 686 samples
+subtypes_path <- file.path(data_dir_glioma,"Glioma_sub_genes.csv")
+Glioma_subs <- read.csv(subtypes_path, header = TRUE, sep=",")
+Glioma_subs = Glioma_subs[,colnames(Glioma_subs) %in% c(gt50,"patient","IDH.status")]
+Glioma_subs <- na.omit(Glioma_subs)
+
+# ### split the dataset to train and test by 7:3
+sub <- sample(1:nrow(Glioma_subs),round(nrow(Glioma_subs)*0.7))
+training <- Glioma_subs[sub,]
+testing <- Glioma_subs[-sub,]
+
+# write.csv(training,file = "star_data/GBM_data/Glioma_training.csv",quote=FALSE,row.names = FALSE)
+# write.csv(testing,file = "star_data/GBM_data/Glioma_testing.csv",quote=FALSE,row.names = FALSE)
+# training_path <- file.path(data_dir,"Glioma_training.csv")
+# testing_path <- file.path(data_dir,"Glioma_testing.csv")
+# training <- read.csv(training_path, header = TRUE, sep=",")
+# testing <- read.csv(testing_path, header = TRUE, sep=",")
+
+pp <- preProcess(training, method = c("nzv", "center", "scale", "YeoJohnson"))
+pp <- preProcess(testing, method = c("nzv", "center", "scale", "YeoJohnson"))
+
+pptraining <- predict(pp, training)
+pptesting <- predict(pp, testing)
+```
+
+### train the 44 GT model for the Glioma subtypes classification
+
+```{r}
+# As for Glioma
+cv <- trainControl(
+  method = "cv",
+  number = 10,
+  allowParallel = TRUE,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary,
+  seeds = set.seed(123))
+
+tune_grid <- expand.grid(
+             nrounds = c(1,5)*200,  # this is n_estimators in the python code above
+             max_depth = c( 10, 15, 20),
+             colsample_bytree = seq(0.5, 1, 0.1),
+             eta = seq(0.1, 1, 0.2), # learning rate
+             gamma=0.1,
+             min_child_weight = c(0.8,1),
+             subsample = c(0.8,1)
+                      )
+
+cvtreemodel <- train(IDH.status~., 
+               data = pptraining[,!colnames(pptraining) %in% c("patient")], 
+               method = "xgbTree",
+               tuneGrid = tune_grid,
+               trControl = cv,
+               verbose = FALSE,
+               verbosity = 0)
+
+
+ggplot(cvtreemodel)
+cvtreemodel$bestTune
+
+savemodelPath <- file.path(data_dir,"GLioma_sub.rds")
+saveRDS(rdafit,savemodelPath)
+rdafit <- readRDS(savemodelPath)
+
+preds_Glioma <- predict(cvtreemodel, pptesting[,!colnames(pptesting) %in% c("patient")])
+
+# output the confusion matrix of the GT50 subtype model
+confmat3 = confusionMatrix(preds_Glioma, as.factor(pptesting$IDH.status))
+confmat3$table
+```
+
+### Draw the confusion matrix of GT44 subtype model
+
+```{r}
+plt3 <- as.data.frame(confmat3$table)
+plt3$Prediction <- factor(plt3$Prediction, levels=rev(levels(plt3$Prediction)))
+
+ggplot(plt3, aes(Prediction,Reference, fill= Freq)) +
+        geom_tile() + geom_text(aes(label=Freq)) +
+        scale_fill_gradient(low="white", high="#4393C3") +
+        labs(x = "Reference",y = "Prediction") +
+        scale_x_discrete(labels=c("WT","Mutant")) +
+        scale_y_discrete(labels=c("Mutant","WT"))
+```
+
