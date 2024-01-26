@@ -36,22 +36,18 @@ $Data/
         71_genes.csv/ # List of 71 GT genes
         normalcancer.csv/ # Normal and cancer patients and expression values of 71 genes
         CPTAC.csv/ # CPTAC dataset as external test set validation
+    ### Data for survival analysis
+    survival_data
+
 ```
 
-In the Data list
-- **pan-cancer_data**
-    Thies folder includes 27 cancers and the extracted 71 GT genes.
-- **BRCA_data**
-    Our analysis of differential gene expression has led to the collation of a dataset, termed 'BRCA_data'. This dataset is composed of GT genes and aligns them with their respective BRCA subtypes.
-- **Glioma_data**
-    Same as BRCA_data, this folder includes the GT genes and the coressponding Glioma subtypes
+For the external validation datasets:
 - **CMI_data**  
     This folder includes the BRCA sutypes and extracted defferential genes from CMI-MBC. We also extracted the PAM50 genes from CMI-MBC for the comparison with PAM50 with our differential genes.
+
 - **survival_data**
     This folder including two main datasets. One includes 693 patients, and the other includes 325 patients. We save the genes data and corresponding clinical data.
 
-- **In-patient_data**
-    Finally, we clinically collected 57 patient tissue specimens, and we test all of our model on these in-house patient data.
 
 ## Content
 We have folder **Deg** mainly provids the codes for genetic differential analysis based on GT genes of some cancer subtypes.
@@ -64,10 +60,57 @@ For the four main tasks in the article:
 We have four main codes in folder src which are corresponding to corresponding tasks. At the same time, we put all four trained models into folder **models** for everyone to test the results.
 
 ## Requirements
+
 R version: 4.1.3
+[Rstudio](https://posit.co/download/rstudio-desktop/)
+BiocManager: 3.14
+
+You can download the R version **4.1.3** for **windows** from [here](https://cran.r-project.org/bin/windows/base/old/). For Mac and For linux.
+
+All codes run in R markdown format. You need to install the R markdown package in advance. Use the following command:
+```
+install.packages('rmarkdown')
+```
+
+Using the following commands to install the packages:
+```
+BiocManager::install('rgl')
+BiocManager::install('TCGAbiolikns')
+```
+
 
 ## Demo
+
+Before run the code, please set the work directory to **GT-classifier** using the command:
+```
+setwd("path-your-dir/GT-classifier")
+getwd() 
+```
+
 Please run the code files in src directly as required. The R packages that need to be installed for each file are listed at the head of the file.
+
+For the verification of 27 cancer classification model, we provide the Test Deomo code:
+
+
+```r
+### Import the testing Data
+testing_data <- read.csv("./star_data/testing/testing_data_new.csv",header = T)
+pp = preProcess(x=testing_data, method = c("scale","center","YeoJohnson"),na.remove=TRUE)
+pp_testing_data   = predict(pp, testing_data)
+
+### load the pretrained model
+modelPath <- ("../models/cancertypes.rds")
+model <- readRDS(modelPath)
+
+### predict on the external data
+preds <- predict(model,pp_testing_data[,!colnames(pp_testing_data) %in% c(".id")])
+
+### generate the confusion matrix
+conf_matrix <- confusionMatrix(as.factor(pp_testing_data$.id),preds)
+```
+You will get the result within few seconds like this:
+
+
 
 ## Contact
 If you have any questions in this repo, please contact email: luyao.yang@kaust.edu.sa or jing.kai@kaust.edu.sa
