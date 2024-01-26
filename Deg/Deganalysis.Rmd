@@ -7,134 +7,84 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Wilcox.test/ t.test 差异分析 BRCA
+## Wilcox.test/ t.test 
 
 ```{r}
-
-genes_path <- file.path("69_genes.csv")
+genes_path <- file.path("71_genes.csv")
 genes <-  read.csv(genes_path,header = T)
-genes$x
-# include 4 subtypes and 1 normal
 genes_path <- file.path("BRCA_IHC_pam50.csv")
-genes_path <- file.path(data_dir,"Glioma.csv")
-sub5_brca <- read.csv(genes_path, header = T,sep = ",")
+# genes_path <- file.path(data_dir,"Glioma.csv")
+sub4_brca <- read.csv(genes_path, header = T,sep = ",")
+```
 
 
-sub_brca<-sub5_brca[,c("IHC",genes$x)]
-sub_brca
-
-
+```{r}
 # For subtypes
 basal_ids = c()
 luma_ids = c()
 lumb_ids = c()
 her_ids = c()
-for(i in 1:nrow(sub_brca)){
-    if(sub_brca$IHC[i] =="Basal"){
+for(i in 1:nrow(sub4_brca)){
+    if(sub4_brca$IHC[i] =="Basal"){
         basal_ids <- c(basal_ids,i)
-        }else if(sub_brca$IHC[i] =="Her2"){
+        }else if(sub4_brca$IHC[i] =="Her2"){
             her_ids <- c(her_ids,i)
-        }else if(sub_brca$IHC[i] =="LumA"){
+        }else if(sub4_brca$IHC[i] =="LumA"){
             luma_ids <- c(luma_ids,i)
         }else{ 
             lumb_ids <- c(lumb_ids,i)}
 }
 
 
-basal_ids
-Her_ids
-
-print(sub_brca)
-ExM <- data.frame(t(sub_brca[,-c(1)]))
-ExM
-ExM[,1] # log2TPM 表达矩阵
-
-#cat("wilcox.test\n")
-pvalue = padj = log2FoldChange = matrix(0, nrow(ExM), 1)
-
-A<- lumb_ids
-B<- her_ids
-for(i in 1:nrow(ExM)){
-    # wilcox.test(ExM[18, 2], ExM[18, 1000])
-    # wilcox
-   
-    # pvalue[i, 1] = p.value = wilcox.test(as.numeric(ExM[i,A]), as.numeric(ExM[i, B]))$p.value
-    # ttest
-    pvalue[i, 1] = p.value = t.test(as.numeric(ExM[i, A]), as.numeric(ExM[i, B]))$p.value
-    log2FoldChange[i, 1] = mean(as.numeric(ExM[i, A])) - mean(as.numeric(ExM[i,B]))
-}
-
-log2FoldChange
-
-padj = p.adjust(as.vector(pvalue), "fdr", n = length(pvalue))
-rTable = data.frame(log2FoldChange, pvalue, padj, row.names = rownames(ExM))
-rTable
-treatment_Log2TPM <- signif(apply(ExM[rownames(rTable), A], 1, mean), 4)
-control_Log2TPM <- signif(apply(ExM[rownames(rTable),B], 1, mean), 4)
-
-cat("mark DGE\n") 
-DGE <- rep("NC", nrow(ExM))
-DGE[((rTable$padj) < 0.05) & (rTable$log2FoldChange > 1)] = "UP"
-DGE[((rTable$padj) < 0.05) & (rTable$log2FoldChange < -1)] = "DN"
-
-gene = rownames(ExM)
-rTable = data.frame(treatment_Log2TPM, control_Log2TPM, rTable[, c("log2FoldChange", "pvalue", "padj")], DGE)
-head(rTable)
-
-rTable
-ups <- rownames(rTable[grep("UP",rTable$DGE),])
-as.factor(ups)
-downs <- rownames(rTable[grep("DN",rTable$DGE),])
-as.factor(downs)
-
-getwd()
-write.table(rTable,"t-test/lumbher.csv",sep=",",quote=FALSE)
-write.table(rTable,"wilcon/lumbher.csv",sep=",",quote=FALSE)
-write.table(rTable,"t-test/HerLum.csv",sep=",",quote=FALSE)
-write.table(rTable,"wilcon/WtMtuant.csv",sep=",",quote=FALSE)
+ExM <- data.frame(t(sub4_brca[,-c(1,2,3)]))
 ```
 
+
 ```{r}
+pvalue = padj = log2FoldChange = matrix(0, nrow(ExM), 1)
 ups_set <- c()
 dn_set <- c()
-# temp <- "./BRCA_DEG/t-test"
-temp <- "./BRCA_DEG/wilcon"
-genes_path <- file.path(temp,"lumbher.csv")
 
-genes_path <- file.path(temp,"basalher.csv")
+# Define the list of vectors
+ids_list <- list(luma_ids, lumb_ids, her_ids, basal_ids)
 
-genes_path <- file.path(temp,"basalluma.csv")
-
-genes_path <- file.path(temp,"basallumb.csv")
-
-genes_path <- file.path(temp,"lumaher.csv")
-
-genes_path <- file.path(temp,"lumalumb.csv")
-
-results <-  read.csv(genes_path,header = T)
-
-ups <- rownames(rTable[grep("UP",results$DGE),])
-ups_set <- c(ups_set,ups)
-downs <- rownames(rTable[grep("DN",results$DGE),])
-dn_set <- c(dn_set,downs)
-
+# Use a for loop to iterate over the list
+for(m in 1:3){
+  for(n in (m+1):4) {
+    A <- ids_list[[m]]
+    B <- ids_list[[n]]
+    for(i in 1:nrow(ExM)){
+    # wilcon
+    pvalue[i, 1] = p.value = wilcox.test(as.numeric(ExM[i,A]), as.numeric(ExM[i, B]))$p.value
+    # ttest
+    # pvalue[i, 1] = p.value = t.test(as.numeric(ExM[i, A]), as.numeric(ExM[i, B]))$p.value
+    log2FoldChange[i, 1] = mean(as.numeric(ExM[i, A])) - mean(as.numeric(ExM[i,B]))
+    }
+    padj = p.adjust(as.vector(pvalue), "fdr", n = length(pvalue))
+    rTable = data.frame(log2FoldChange, pvalue, padj, row.names = rownames(ExM))
+    rTable
+    treatment_Log2TPM <- signif(apply(ExM[rownames(rTable), A], 1, mean), 4)
+    control_Log2TPM <- signif(apply(ExM[rownames(rTable),B], 1, mean), 4)
+    DGE <- rep("NC", nrow(ExM))
+    DGE[((rTable$padj) < 0.05) & (rTable$log2FoldChange > 1)] = "UP"
+    DGE[((rTable$padj) < 0.05) & (rTable$log2FoldChange < -1)] = "DN"
+    rTable = data.frame(treatment_Log2TPM, control_Log2TPM, rTable[, c("log2FoldChange", "pvalue", "padj")], DGE)
+    
+    ups <- rownames(rTable[grep("UP",rTable$DGE),])
+    downs <- rownames(rTable[grep("DN",rTable$DGE),])
+    ups_set <- c(ups_set,ups)
+    dn_set <- c(dn_set,downs)
+  }
+}
 
 ups_set <- unique(ups_set)
 dn_set <- unique(dn_set)
-ups_set
-dn_set
+# ttest_result <- c(ups_set, dn_set)
+wilcon_result <- c(ups_set, dn_set)
 
-ttest <-  c("GALNT1","GALNT5","GALNT6","GALNT11","ST6GALNAC2" ,"B4GALT6"  ,"B3GALT4",   
-  "B3GNT8","FUT1","FUT8","FUT11","GCNT4","UGCG","A4GALT",    
-"GALNT2", "ST3GAL2"  ,  "ST3GAL6" ,   "ST8SIA1"  ,  "ST8SIA4" ,   "B4GALT2"  ,  "B4GALNT1"  ,
-"B3GNT5", "FUT4"    ,   "MGAT5"   ,   "GCNT2"   ,   "GALNT3" ,    "GALNT12"  ,  "GALNT13"   ,
- "GALNT14",  "ST3GAL4" ,   "ST6GAL1"   , "B4GALT3"   , "B4GALT5" ,   "B3GNT3"   ,  "B3GNT7","FUT3"     ,  "FUT7","MGAT3" ,     "MGAT4B",     "GALNT10" )
-wilcon<-unique(ups_set,dn_set)
-wilcon
-
-r <- union(wilcon,ttest)
-r[-1]
+result <- intersect(ttest_result,wilcon_result)
 ```
+
 
 ## Wilcox.test/ t.test 差异分析 GBM
 
@@ -158,8 +108,6 @@ for(i in 1:nrow(glioma_subs)){
 }
 
 ExM <- data.frame(t(glioma_subs[,-c(1)]))
-ExM
-ExM[,1] # log2TPM 表达矩阵
 
 
 pvalue = padj = log2FoldChange = matrix(0, nrow(ExM), 1)
@@ -176,7 +124,6 @@ for(i in 1:nrow(ExM)){
     log2FoldChange[i, 1] = mean(as.numeric(ExM[i, A])) - mean(as.numeric(ExM[i,B]))
 }
 
-log2FoldChange
 
 padj = p.adjust(as.vector(pvalue), "fdr", n = length(pvalue))
 rTable = data.frame(log2FoldChange, pvalue, padj, row.names = rownames(ExM))
@@ -193,17 +140,11 @@ rTable = data.frame(treatment_Log2TPM, control_Log2TPM, rTable[, c("log2FoldChan
 rTable
 
 ups <- rownames(rTable[grep("UP",rTable$DGE),])
-ups
 downs <- rownames(rTable[grep("DN",rTable$DGE),])
-downs
 ttest <- unique(c(ups,downs))
-ttest #
 wilcon <-unique(c(ups,downs))
-wilcon
 
-getwd()
 # write.table(rTable,"./t-test/wildmutant.csv",sep=",",quote=FALSE)
 write.table(rTable,"./wilcon/wildmutant.csv",sep=",",quote=FALSE)
 r <- union(wilcon,ttest)
-r
 ```
