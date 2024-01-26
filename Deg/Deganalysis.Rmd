@@ -86,7 +86,7 @@ result <- intersect(ttest_result,wilcon_result)
 ```
 
 
-## Wilcox.test/ t.test 差异分析 GBM
+## Wilcox.test/ t.test  GBM
 
 ```{r}
 data_dir <- "star_data"
