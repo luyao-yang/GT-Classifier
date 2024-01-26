@@ -15,8 +15,30 @@
 For all pan-cancer The Cancer Genome Atlas Program(TCGA) data, we downloaded it from the [link](https://portal.gdc.cancer.gov/). As for our external validation set of The Metastatic Breast Cancer(CMI-MBC) and Clinical Proteomic Tumor Analysis Consortium(CPTAC), we also downloaded from the [link](https://portal.gdc.cancer.gov/).
 Especially, the external dataset Chinese Glioma Genome Atlas(CCGA) is downloaded from [link](http://www.cgga.org.cn/).
 
-After gaining all source data, we extracted 71 GT-genes and removed missing values. And we also collect the data that contains the cancer subtypes and paintent ID information. You can download all processed GT data from [src/star_data](https://github.com/luyao-yang/GT-Classifier/tree/main/src/star_data)
+After gaining all source data, we extracted 71 GT-genes and removed missing values. And we also collect the data that contains the cancer subtypes and paintent ID information. You can download all processed GT data from [Data](https://github.com/luyao-yang/GT-classifier/tree/main/Data)
 
+
+After processing, the **Data** should look like:
+
+```
+$Data/
+    ### Data for Breat cancer subtypes classification
+    BRACA_data/
+        BRCA_47_genes.txt/ # List of 47 genes used to classify breast cancer subtypes
+        BRCA_IHC_pam50.csv/ # 71 gene expression and corresponding pam50 and IHC labeling of breast cancer subtypes
+    ### Data for Glioma cancer subtypes classification
+    Glioma_data/
+        Glioma_50_genes.txt/ # List of 50 genes used to classify Glioma cancer subtypes
+        Glioma_sub_genes.txt/ # 50 gene expression and corresponding true labeling of Glioma cancer subtypes
+    ### Data for 27 cancers classification
+    pan-cancer_data/
+        27_cancers.csv/ # 27 types of cancer and the corresponding expression of 71 genes
+        71_genes.csv/ # List of 71 GT genes
+        normalcancer.csv/ # Normal and cancer patients and expression values of 71 genes
+        CPTAC.csv/ # CPTAC dataset as external test set validation
+```
+
+In the Data list
 - **pan-cancer_data**
     Thies folder includes 27 cancers and the extracted 71 GT genes.
 - **BRCA_data**
