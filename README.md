@@ -142,7 +142,7 @@ result = pheatmap(confmat$table, scale = "column", cluster_rows=FALSE, cluster_c
 
 After running the test_demo, you will get the heatmap of the model on the CPTAC testing data:
 
-![ ](CPTAC.png){width=70%}
+<img src="./CPTAC.png" width="70%">
 
 
 You can change the dirctory and model name to validate other external datasets using the test demo.
