@@ -51,7 +51,7 @@ $Data/
 
 ```
 
-For **survival analysis** datasets, the CPTAC is used for validate the cancertypes model. The CMI is used for validate the Breastsubtypes model. the structure is like this:
+For **survival analysis** datasets, the CPTAC dataset is used for validate the cancertypes model. The CMI is used for validate the Breastsubtypes model. the structure is like this:
 ```
 $Data/
     ### Data for 27 cancers classification
@@ -142,7 +142,7 @@ result = pheatmap(confmat$table, scale = "column", cluster_rows=FALSE, cluster_c
 
 After running the test_demo, you will get the heatmap of the model on the CPTAC testing data:
 
-![ ](CPTAC.png)
+![ ](CPTAC.png){width=70%}
 
 
 You can change the dirctory and model name to validate other external datasets using the test demo.
@@ -150,12 +150,4 @@ You can change the dirctory and model name to validate other external datasets u
 ## Contact
 If you have any questions in this repo, please contact email: luyao.yang@kaust.edu.sa or jing.kai@kaust.edu.sa
 
-<!-- ## Citation
-```javascript
-@article{Painter,
-  title={Images Speak in Images: A Generalist Painter for In-Context Visual Learning},
-  author={Wang, Xinlong and Wang, Wen and Cao, Yue and Shen, Chunhua and Huang, Tiejun},
-  journal={arXiv preprint arXiv:2212.02499},
-  year={2023}
-}
-``` -->
+
