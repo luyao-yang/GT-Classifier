@@ -25,11 +25,11 @@ $Data/
     ### Data for Breat cancer subtypes classification
     BRACA_data/
         BRCA_47_genes.txt/ # List of 47 genes used to classify breast cancer subtypes
-        BRCA_IHC_pam50.csv/ # 71 gene expression and corresponding pam50 and IHC labeling of breast cancer subtypes
+        BRCA_GTs.csv/ # 71 gene expression and corresponding pam50 and IHC labeling of breast cancer subtypes
     ### Data for Glioma cancer subtypes classification
     Glioma_data/
         Glioma_50_genes.txt/ # List of 50 genes used to classify Glioma cancer subtypes
-        Glioma_sub_genes.txt/ # 50 gene expression and corresponding true labeling of Glioma cancer subtypes
+        Glioma_GTs.csv/ # 50 gene expression and corresponding true labeling of Glioma cancer subtypes
     ### Data for 27 cancers classification
     pan-cancer_data/
         27_cancers.csv/ # 27 types of cancer and the corresponding expression of 71 genes
@@ -51,20 +51,17 @@ $Data/
 
 ```
 
-For **survival analysis** datasets, the CPTAC dataset is used for validate the cancertypes model. The CMI is used for validate the Breastsubtypes model. the structure is like this:
+For **survival analysis**. This folder including two main datasets from [CCGA]((http://www.cgga.org.cn/).). One includes 693 patients, and the other includes 325 patients. We save the genes data and corresponding clinical data.
+
 ```
 $Data/
-    ### Data for 27 cancers classification
+    ### Data for Glioma survival data
     survival_data/
         CGGA_693_gt50.csv
 ```
 
-- **CMI_data**  
-    This folder includes the BRCA sutypes and extracted defferential genes from CMI-MBC. We also extracted the PAM50 genes from CMI-MBC for the comparison with PAM50 with our differential genes.
 
-- **survival_data**
-    This folder including two main datasets. One includes 693 patients, and the other includes 325 patients. We save the genes data and corresponding clinical data.
-
+    
 
 ## Content
 The folder **Deg** mainly provids the codes for genetic differential analysis based on GT genes of some cancer subtypes.
@@ -104,7 +101,7 @@ setwd("path-your-dir/GT-classifier")
 getwd() 
 ```
 
-#### Training
+### Training
 Please make sure a created **models** under the **GT-classifier**.
 ```
 dir.create("models")
@@ -114,7 +111,7 @@ Run the code files in src directly as required. The different four **.Rmd files 
 
 After running the code, you will get the trained model under the models directory.
 
-#### Evaluation
+### Evaluation
 For the evaluation of 27 cancer classification model on the external dataset CPTAC, we provide the Test Deomo code:
 
 
