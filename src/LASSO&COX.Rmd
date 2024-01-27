@@ -46,8 +46,8 @@ library(timeROC)
 ### Glioma Prognosis Analysis using LASSO and COX
 
 ```{r}
-data_dir <- "star_data/survival_data"
-genes_path <- file.path(data_dir,"Glioma_44_genes.txt")
+data_dir <- "../Data/survival_data"
+genes_path <- file.path(data_dir,"Glioma_40_genes.txt")
 gt44 <- read_tsv(genes_path,col_names=FALSE,show_col_types=FALSE)$X1
 
 ### This part splits the file Glioma_survival.csv into 7:3 training dataset and testing dataset

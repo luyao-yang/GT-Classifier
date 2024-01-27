@@ -38,7 +38,7 @@ library(pROC)
 ### As for BRCA subtype models
 
 ```{r pressure, echo=FALSE}
-brca_data_dir <- "star_data/BRCA_data"
+brca_data_dir <- "../Data/BRCA_data"
 genes_path <- file.path(brca_data_dir,"BRCA_47_genes.txt")
 # read the 35 differential genes of BRCA
 gt47 <- read_tsv(genes_path,col_names=FALSE,show_col_types=FALSE)$X1
@@ -48,7 +48,6 @@ subtypes_path <- file.path(brca_data_dir,"BRCA_IHC_pam50.csv")
 BRCA_subs <- read.csv(subtypes_path, header = TRUE, sep=",")
 # table(BRCA_subs$IHC)
 BRCA_subs <- BRCA_subs[,colnames(BRCA_subs) %in% c(gt47,"pam50","patient","IHC")]
-BRCA_subs
 
 ### split the dataset to train and test by 7:3
 sub <- sample(1:nrow(BRCA_subs),round(nrow(BRCA_subs)*0.7))
@@ -70,7 +69,6 @@ cv <- trainControl(
   number = 10,
   allowParallel = TRUE,
   classProbs = TRUE,
-  summaryFunction = multiClassSummary,
   seeds = set.seed(123))
 
 tune_grid <- expand.grid(
@@ -89,7 +87,7 @@ cvtreemodel <- train(IHC~.,
                tuneGrid = tune_grid,
                trControl = cv,
                verbose = FALSE,
-               metric = "ROC",
+               metric = "Accuracy",
                verbosity = 0)
 
 

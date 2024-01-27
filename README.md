@@ -133,9 +133,14 @@ preds <- predict(model,pp_testing_data[,!colnames(pp_testing_data) %in% c(".id")
 #predicted_labels <- factor(model_predictions, levels = unique(all_possible_classes))
 
 ### generate the confusion matrix
-confmat <- confusionMatrix(as.factor(pp_testing_data$.id),preds)
+predicted_labels <- factor(preds, levels = unique(pp_testing_data$.id))
+confmat <- confusionMatrix(predicted_labels,as.factor(pp_testing_data$.id))
+
+### Draw the pheatmap
+result = pheatmap(confmat$table, scale = "column", cluster_rows=FALSE, cluster_cols=FALSE)
 ```
 
+After running the test_demo, you will get the heatmap of the model on the CPTAC testing data:
 
 ![ ](CPTAC.png)
 
