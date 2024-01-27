@@ -18,7 +18,7 @@ Especially, the external dataset Chinese Glioma Genome Atlas(CCGA) is downloaded
 After gaining all source data, we extracted 71 GT-genes and removed missing values. And we also collect the data that contains the cancer subtypes and paintent ID information. You can download all processed GT data from [Data](https://github.com/luyao-yang/GT-classifier/tree/main/Data)
 
 
-After processing, the **Data** should look like:
+After processing, the TCGA data should look like:
 
 ```
 $Data/
@@ -36,12 +36,29 @@ $Data/
         71_genes.csv/ # List of 71 GT genes
         normalcancer.csv/ # Normal and cancer patients and expression values of 71 genes
         CPTAC.csv/ # CPTAC dataset as external test set validation
-    ### Data for survival analysis
-    survival_data
 
 ```
 
-For the external validation datasets:
+For the **external validation** datasets, The structure is like this:
+```
+$Data/
+    ### Data for external validation
+    external_data/
+        CPTAC.csv/ # CPTAC cancers types with 71 genes
+        CMI/
+            CMI_GTs.csv # CMI breast cancer subtypes with the 47 genes
+            CMI_pam50.csv # CMI breast cancer subtypes with 50 pam50 genes
+
+```
+
+For **survival analysis** datasets, the CPTAC is used for validate the cancertypes model. The CMI is used for validate the Breastsubtypes model. the structure is like this:
+```
+$Data/
+    ### Data for 27 cancers classification
+    survival_data/
+        CGGA_693_gt50.csv
+```
+
 - **CMI_data**  
     This folder includes the BRCA sutypes and extracted defferential genes from CMI-MBC. We also extracted the PAM50 genes from CMI-MBC for the comparison with PAM50 with our differential genes.
 
@@ -50,7 +67,7 @@ For the external validation datasets:
 
 
 ## Content
-We have folder **Deg** mainly provids the codes for genetic differential analysis based on GT genes of some cancer subtypes.
+The folder **Deg** mainly provids the codes for genetic differential analysis based on GT genes of some cancer subtypes.
 For the four main tasks in the article: 
 * Pan-cancer classification 
 * Cancer and normal classification 
@@ -72,9 +89,9 @@ All codes run in R markdown format. You need to install the R markdown package i
 install.packages('rmarkdown')
 ```
 
-Using the following commands to install the packages:
+Using the following commands to install the packages (for example):
 ```
-BiocManager::install('rgl')
+install.packages("xgboost")
 BiocManager::install('TCGAbiolikns')
 ```
 
@@ -87,14 +104,23 @@ setwd("path-your-dir/GT-classifier")
 getwd() 
 ```
 
-Please run the code files in src directly as required. The R packages that need to be installed for each file are listed at the head of the file.
+#### Training
+Please make sure a created **models** under the **GT-classifier**.
+```
+dir.create("models")
+```
 
-For the verification of 27 cancer classification model, we provide the Test Deomo code:
+Run the code files in src directly as required. The different four **.Rmd files represent four tasks corresponding to the article. The R packages that need to be installed for each file are listed at each head of the file.
+
+After running the code, you will get the trained model under the models directory.
+
+#### Evaluation
+For the evaluation of 27 cancer classification model on the external dataset CPTAC, we provide the Test Deomo code:
 
 
 ```r
 ### Import the testing Data
-testing_data <- read.csv("./star_data/testing/testing_data_new.csv",header = T)
+testing_data <- read.csv("../Data/external_data/CPTAC.csv",header = T)
 pp = preProcess(x=testing_data, method = c("scale","center","YeoJohnson"),na.remove=TRUE)
 pp_testing_data   = predict(pp, testing_data)
 
@@ -104,13 +130,17 @@ model <- readRDS(modelPath)
 
 ### predict on the external data
 preds <- predict(model,pp_testing_data[,!colnames(pp_testing_data) %in% c(".id")])
+#predicted_labels <- factor(model_predictions, levels = unique(all_possible_classes))
 
 ### generate the confusion matrix
-conf_matrix <- confusionMatrix(as.factor(pp_testing_data$.id),preds)
+confmat <- confusionMatrix(as.factor(pp_testing_data$.id),preds)
 ```
-You will get the result within few seconds like this:
 
 
+![ ](CPTAC.png)
+
+
+You can change the dirctory and model name to validate other external datasets using the test demo.
 
 ## Contact
 If you have any questions in this repo, please contact email: luyao.yang@kaust.edu.sa or jing.kai@kaust.edu.sa
